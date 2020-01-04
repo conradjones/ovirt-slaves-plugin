@@ -14,6 +14,7 @@ import hudson.util.ListBoxModel;
 import org.kohsuke.stapler.QueryParameter;
 import org.ovirt.engine.sdk.decorators.VM;
 import org.ovirt.engine.sdk.decorators.VMSnapshot;
+import org.ovirt.engine.sdk.exceptions.ServerException;
 
 import javax.servlet.ServletException;
 import java.io.IOException;
@@ -33,14 +34,14 @@ public class OVirtVMSlave extends Slave {
     /**
      * We need to save most of these information so that we can retrieve them
      * back later when we 'edit' a node.
-     *
+     * <p>
      * This is also the reason why we need getters for them
      */
     static final long serialVersionUID = 1L;
     private String hypervisorDescription;
     private String snapshotName;
     private String virtualMachineName;
-    private ComputerLauncher delegateLauncher;
+    private transient ComputerLauncher delegateLauncher;
     private int waitSec;
 
     private int retries;
@@ -50,23 +51,22 @@ public class OVirtVMSlave extends Slave {
      * it's Jenkins' responsibility to fill those in. This object is used to
      * represent a node creating using the ovirt cloud.
      *
-     * @param name name of the node
-     * @param nodeDescription node description
-     * @param remoteFS the filesystem used
-     * @param numExecutors how many executors to run with
-     * @param mode mode?
-     * @param labelString the labels associated with this node
-     * @param delegateLauncher the launcher used to launch that node
-     * @param retentionStrategy retention strategy
+     * @param name                  name of the node
+     * @param nodeDescription       node description
+     * @param remoteFS              the filesystem used
+     * @param numExecutors          how many executors to run with
+     * @param mode                  mode?
+     * @param labelString           the labels associated with this node
+     * @param delegateLauncher      the launcher used to launch that node
+     * @param retentionStrategy     retention strategy
      * @param hypervisorDescription the hypervisor description
-     * @param snapshotName the snapshot used
-     * @param waitSec how many seconds to wait before retrying
-     * @param retries how many retries to do
-     * @param virtualMachineName the name of the ovirt vm
-     * @param nodeProperties the node properties
-     *
+     * @param snapshotName          the snapshot used
+     * @param waitSec               how many seconds to wait before retrying
+     * @param retries               how many retries to do
+     * @param virtualMachineName    the name of the ovirt vm
+     * @param nodeProperties        the node properties
      * @throws Descriptor.FormException FormException
-     * @throws IOException IOException
+     * @throws IOException              IOException
      */
     @DataBoundConstructor
     public OVirtVMSlave(String name, String nodeDescription, String remoteFS,
@@ -77,13 +77,13 @@ public class OVirtVMSlave extends Slave {
                         int waitSec, int retries,
                         String virtualMachineName,
                         List<? extends NodeProperty<?>> nodeProperties)
-                throws Descriptor.FormException, IOException {
+            throws Descriptor.FormException, IOException {
         super(name, nodeDescription, remoteFS, numExecutors, mode, labelString,
-              new OVirtVMLauncher(delegateLauncher, hypervisorDescription,
-                                  virtualMachineName, snapshotName,
-                                  waitSec, retries),
-              retentionStrategy,
-              nodeProperties);
+                new OVirtVMLauncher(delegateLauncher, hypervisorDescription,
+                        virtualMachineName, snapshotName,
+                        waitSec, retries),
+                retentionStrategy,
+                nodeProperties);
 
         this.hypervisorDescription = hypervisorDescription;
         this.snapshotName = snapshotName;
@@ -127,10 +127,12 @@ public class OVirtVMSlave extends Slave {
     @Extension
     public static class OVirtVMSlaveListener extends ComputerListener {
 
-        /** FIXME: this is doing nothing! */
+        /**
+         * FIXME: this is doing nothing!
+         */
         @Override
         public void preLaunch(Computer c, TaskListener taskListener)
-                                      throws IOException, InterruptedException {
+                throws IOException, InterruptedException {
             /* We may be called on any slave type so check that we should
              * be in here.
              */
@@ -154,12 +156,13 @@ public class OVirtVMSlave extends Slave {
 
         /**
          * Human readable name of this kind of configurable object.
+         *
          * @return string representation of the vm
          */
         @Override
         public String getDisplayName() {
             return "Slave VM computer running on a virtualization platform " +
-                   "(via ovirt)";
+                    "(via ovirt)";
         }
 
         /**
@@ -180,18 +183,18 @@ public class OVirtVMSlave extends Slave {
          * @return FormValidation object that says if the validation passed
          */
         public FormValidation doCheckWaitSec(@QueryParameter("waitSec")
-                                             String value) {
-         	try {
+                                                     String value) {
+            try {
                 int v = Integer.parseInt(value);
                 FormValidation result;
 
                 if (v < 0) {
-                     result = FormValidation.error("Negative value..");
+                    result = FormValidation.error("Negative value..");
                 } else if (v == 0) {
                     result = FormValidation.warning(
-                       "You declared this virtual machine to be ready right " +
-                       "away. It probably needs a couple of seconds before it" +
-                       " is ready to process jobs!");
+                            "You declared this virtual machine to be ready right " +
+                                    "away. It probably needs a couple of seconds before it" +
+                                    " is ready to process jobs!");
                 } else {
                     result = FormValidation.ok();
                 }
@@ -209,7 +212,7 @@ public class OVirtVMSlave extends Slave {
         public ListBoxModel doFillHypervisorDescriptionItems() {
             ListBoxModel m = new ListBoxModel();
 
-            for(String key: OVirtHypervisor.getAll().keySet()) {
+            for (String key : OVirtHypervisor.getAll().keySet()) {
                 m.add(key, key);
             }
             return m;
@@ -220,19 +223,17 @@ public class OVirtVMSlave extends Slave {
          * generate a dropdown menu
          *
          * @param value the hypervisor description
-         *
          * @return the list of vm names
-         *
-         * @throws IOException IOException
+         * @throws IOException      IOException
          * @throws ServletException ServletException
          */
         public ListBoxModel doGetVMNames(@QueryParameter("hypervisor")
-                                         String value)
-                                      throws IOException, ServletException {
+                                                 String value)
+                throws IOException, ServletException {
 
             ListBoxModel m = new ListBoxModel();
             List<String> vmNames = getVMNamesList(value);
-            for (String vmName: vmNames) {
+            for (String vmName : vmNames) {
                 m.add(vmName, vmName);
             }
             return m;
@@ -251,7 +252,7 @@ public class OVirtVMSlave extends Slave {
                 return vmNames;
             }
             OVirtHypervisor hype = OVirtHypervisor.getAll().get(hypervisor);
-            for (String vmName: hype.getVMNames()) {
+            for (String vmName : hype.getVMNames()) {
                 vmNames.add(vmName);
             }
             return vmNames;
@@ -261,20 +262,19 @@ public class OVirtVMSlave extends Slave {
          * Get all the snapshots corresponding to this vm and hypervisor to
          * generate a dropdown menu
          *
-         * @param vm vm whose snapshots are to be found
+         * @param vm         vm whose snapshots are to be found
          * @param hypervisor vm belonging to this hypervisor
          * @return list of snapshots for that vm
-         *
-         * @throws IOException IOException
+         * @throws IOException      IOException
          * @throws ServletException ServletException
          */
         public ListBoxModel
         doGetSnapshotNames(@QueryParameter("vm") String vm,
                            @QueryParameter("hypervisor") String hypervisor)
-                                        throws IOException, ServletException {
+                throws IOException, ServletException {
 
             ListBoxModel m = new ListBoxModel();
-            for (String snapshot: getSnapshotNamesList(vm, hypervisor)) {
+            for (String snapshot : getSnapshotNamesList(vm, hypervisor)) {
                 m.add(snapshot, snapshot);
             }
             return m;
@@ -283,7 +283,7 @@ public class OVirtVMSlave extends Slave {
         /**
          * Get all the snapshots corresponding to this vm and hypervisor
          *
-         * @param vm vm whose snapshots are to be found
+         * @param vm         vm whose snapshots are to be found
          * @param hypervisor vm belonging to this hypervisor
          * @return list of snapshots for that vm
          */
@@ -303,11 +303,13 @@ public class OVirtVMSlave extends Slave {
             VM vmi = hype.getVM(vm);
 
             try {
-                for (VMSnapshot snapshot: vmi.getSnapshots().list()) {
+                for (VMSnapshot snapshot : vmi.getSnapshots().list()) {
                     snapshotNames.add(snapshot.getDescription());
                 }
                 /** FIXME: empty catch name */
-            } catch (Exception e) {}
+            } catch (ServerException e) {
+            } catch (IOException e) {
+            }
             return snapshotNames;
         }
 

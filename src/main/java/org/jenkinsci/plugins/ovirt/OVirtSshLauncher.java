@@ -97,6 +97,9 @@ public class OVirtSshLauncher extends ComputerLauncher {
             throws IOException, InterruptedException {
 
         OVirtVMSlave slave = (OVirtVMSlave) slaveComputer.getNode();
+        if (slave == null) {
+            return;
+        }
         String hypervisor = slave.getHypervisorDescription();
         String vmName = slave.getVirtualMachineName();
 
@@ -115,7 +118,7 @@ public class OVirtSshLauncher extends ComputerLauncher {
                 }
             } catch (NullPointerException e) {
                 taskListener.error("Couldn't get IP address of VM.. retrying in " + retryWaitTime + " s");
-                Thread.sleep(TimeUnit.SECONDS.toMillis(retryWaitTime));
+                Thread.currentThread().wait(TimeUnit.SECONDS.toMillis(retryWaitTime));
             }
         }
         if (ip == null) {
@@ -138,10 +141,6 @@ public class OVirtSshLauncher extends ComputerLauncher {
                     reportEnvironment(taskListener);
 
                     final String workingDirectory = getWorkingDirectory(slaveComputer);
-                    if (workingDirectory == null) {
-                        taskListener.error("Cannot get the working directory for " + slaveComputer);
-                        return Boolean.FALSE;
-                    }
 
                     copySlaveJar(taskListener, workingDirectory);
                     startSlave(slaveComputer, taskListener, workingDirectory);
@@ -167,7 +166,6 @@ public class OVirtSshLauncher extends ComputerLauncher {
             } else {
                 results = executorService.invokeAll(callables);
             }
-            long duration = System.currentTimeMillis() - time;
             Boolean res;
             try {
                 res = results.get(0).get();
@@ -313,7 +311,12 @@ public class OVirtSshLauncher extends ComputerLauncher {
     }
 
     private String getWorkingDirectory(SlaveComputer slaveComputer) {
-        String workingDirectory = slaveComputer.getNode().getRemoteFS();
+        String workingDirectory = "";
+        Slave slave = slaveComputer.getNode();
+        if (slave == null) {
+            return workingDirectory;
+        }
+        workingDirectory = slave.getRemoteFS();
         while (workingDirectory.endsWith("/")) {
             workingDirectory = workingDirectory.substring(0, workingDirectory.length() - 1);
         }
